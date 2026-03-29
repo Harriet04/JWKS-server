@@ -28,7 +28,7 @@ db.exec(`
 const insertKey = db.prepare('INSERT INTO keys(key, exp) VALUES (?, ?)');
 
 async function storeKeyInDB(key, exp) {
-  const pemKey = key.toPEM(true);
+  const pemKey = (key.toPEM(true)).toString();
   insertKey.run(pemKey, exp);
 }
 
@@ -98,21 +98,13 @@ app.all('/.well-known/jwks.json', (req, res, next) => {
 app.get('/.well-known/jwks.json', (req, res) => {
   const ValidKeys = db.prepare('SELECT * FROM keys WHERE exp > ?').all(Math.floor(Date.now() / 1000));
   
-  const keyList = [];
-
-  ValidKeys.forEach(key => {
-    keyList.push({
-      kty: 'RSA',
-      use: 'sig',
-      alg: 'RS256',
-      n: jose.util.base64url.encode(jose.util.asBuffer(key.key).slice(0, 256)),
-      e: jose.util.base64url.encode(jose.util.asBuffer(key.key).slice(256, 259))
-    });
-  });
   
   //const validKeys = [keyPair].filter(key => !key.expired);
   res.setHeader('Content-Type', 'application/json');
-  res.json({ keys: keyList });
+  res.json({ keys: ValidKeys.map(key => {
+    const joseKey = jose.JWK.asKey(key.key, "pem");
+    return joseKey.toJSON();
+  })});
 });
 
 app.post('/auth', (req, res) => {
