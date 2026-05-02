@@ -1,0 +1,14 @@
+{
+  "name": "jwks-server",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "express": "^4.22.1",
+    "jsonwebtoken": "^9.0.2",
+    "node-jose": "^2.2.0"
+  }
+}

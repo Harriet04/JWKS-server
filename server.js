@@ -95,36 +95,52 @@ app.all('/.well-known/jwks.json', (req, res, next) => {
   next();
 });
 
-app.get('/.well-known/jwks.json', (req, res) => {
+app.get('/.well-known/jwks.json', async (req, res) => {
   const ValidKeys = db.prepare('SELECT * FROM keys WHERE exp > ?').all(Math.floor(Date.now() / 1000));
-  
-  
-  //const validKeys = [keyPair].filter(key => !key.expired);
+
+  const keys = await Promise.all(ValidKeys.map(async row => {
+    const joseKey = await jose.JWK.asKey(row.key, 'pem');
+    const jwk = joseKey.toJSON();
+    jwk.kid = String(row.kid);
+    return jwk;
+  }));
+
   res.setHeader('Content-Type', 'application/json');
-  res.json({ keys: ValidKeys.map(key => {
-    const joseKey = jose.JWK.asKey(key.key, "pem");
-    return joseKey.toJSON();
-  })});
+  res.json({ keys });
 });
 
 app.post('/auth', (req, res) => {
-
-  if (req.query.expired === 'true'){
+  if (req.query.expired === 'true') {
     const expiredKey = db.prepare('SELECT * FROM keys WHERE exp < ?').get(Math.floor(Date.now() / 1000));
     if (!expiredKey) {
       return res.status(404).send('Expired Key Not Found');
     }
-    //sign the expired token with the expired key
-    //expiredToken = jwt.sign(jwt.decode(expiredToken), expiredKey.key, { algorithm: 'RS256' });
-    return res.send(jwt.decode(expiredKey.key));
+    const payload = {
+      user: 'sampleUser',
+      iat: Math.floor(Date.now() / 1000) - 30000,
+      exp: Math.floor(Date.now() / 1000) - 3600
+    };
+    const signed = jwt.sign(payload, expiredKey.key, {
+      algorithm: 'RS256',
+      header: { typ: 'JWT', alg: 'RS256', kid: String(expiredKey.kid) }
+    });
+    return res.send(signed);
   }
+
   const validKey = db.prepare('SELECT * FROM keys WHERE exp > ?').get(Math.floor(Date.now() / 1000));
   if (!validKey) {
     return res.status(404).send('Valid Key Not Found');
   }
-  //sign the token with the valid key
-  //token = jwt.sign(jwt.decode(token), validKey.key, { algorithm: 'RS256' });
-  res.send(jwt.decode(validKey.key));
+  const payload = {
+    user: 'sampleUser',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600
+  };
+  const signed = jwt.sign(payload, validKey.key, {
+    algorithm: 'RS256',
+    header: { typ: 'JWT', alg: 'RS256', kid: String(validKey.kid) }
+  });
+  res.send(signed);
 });
 
 generateKeyPairs().then(() => {
