@@ -4,9 +4,13 @@ const crypto = require('crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const jose = require('node-jose');
+//const env = 'node:process';
 
 const app = express();
 const port = 8080;
+
+//const MASTER_KEY = Buffer.from(env.NOT_MY_KEY, 'hex'); 
+//const ALGORITHM = 'aes-256-gcm';
 
 let keyPair;
 let expiredKeyPair;
@@ -16,7 +20,10 @@ let expiredToken;
 app.use(express.json());
 
 app.post('/auth', async (req, res) => {
+  console.log("Auth endpoint hit");
+  await storeAuthLog(req.ip, null);
   if (req.query.expired === 'true') {
+    console.log("Expired token requested");
     const expiredKey = db.prepare('SELECT * FROM keys WHERE exp < ?').get(Math.floor(Date.now() / 1000));
     if (!expiredKey) {
       return res.status(404).send('Expired Key Not Found');
@@ -32,7 +39,7 @@ app.post('/auth', async (req, res) => {
     });
     return res.send(signed);
   }
-
+  console.log("Valid token requested");
   const validKey = db.prepare('SELECT * FROM keys WHERE exp > ?').get(Math.floor(Date.now() / 1000));
   if (!validKey) {
     return res.status(404).send('Valid Key Not Found');
@@ -126,7 +133,9 @@ function generateToken() {
   };
 
   storeKeyInDB(keyPair, payload.exp);
+  //encryptPrivateKey(keyPair);
   const DBSign = db.prepare('SELECT * FROM keys WHERE key = ?').get(keyPair.toPEM(true));
+  //decryptPrivateKey(DBSign.key);
   token = jwt.sign(payload, DBSign.key, options);
  
 }
@@ -151,6 +160,29 @@ function generateExpiredJWT() {
   expiredToken = jwt.sign(payload, DBSign.key, options);
   
 }
+/*
+function encryptPrivateKey(key) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGORITHM, MASTER_KEY, iv);
+  let encrypted = cipher.update(key.toPEM(true), 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return iv.toString('hex') + ':' + authTag + ':' + encrypted;
+}
+
+function decryptPrivateKey(encrypted) {
+  const [ivHex, authTagHex, encryptedHex] = encrypted.split(':');
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const encryptedBuffer = Buffer.from(encryptedHex, 'hex');
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, MASTER_KEY, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(encryptedBuffer);
+  decrypted += decipher.final();
+  return decrypted;
+}
+*/
 
 app.post('/register', (req, res) => {
   const { username, email } = req.body;
@@ -167,6 +199,10 @@ app.post('/register', (req, res) => {
     }
     res.status(500).send('Internal Server Error');
   }
+});
+
+app.get('/register', (req, res) => {
+  res.send('Registration endpoint');
 });
 
 app.all('/auth', (req, res, next) => {
