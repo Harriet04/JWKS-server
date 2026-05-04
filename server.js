@@ -197,16 +197,17 @@ function decryptPrivateKey(encrypted) {
 }
 
 
-app.post('/register', (req, res) => {
+app.post('/register', async (req, res) => {
   const { username, email } = req.body;
   if (!username || !email) {
     return res.status(400).send('Username and email are required');
   }
   try {
     const password = crypto.randomUUID4();
-    storeUserInDB(username, password, email);
+    //storeUserInDB(username, password, email);
     res.status(201).send('User registered successfully');
   } catch (err) {
+    console.log(err.code);
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       return res.status(409).send('Username or email already exists');
     }
@@ -249,10 +250,8 @@ app.get('/.well-known/jwks.json', (req, res) => {
   })});
 });
 
+
 process.on('exit', () => db.close());
-process.on('SIGHUP', () => process.exit(128 + 1));
-process.on('SIGINT', () => process.exit(128 + 2));
-process.on('SIGTERM', () => process.exit(128 + 15));
 
 app.listen(port, () => {
     console.log(`Server started on http://localhost:${port}`);
