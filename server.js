@@ -4,7 +4,6 @@ const crypto = require('crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const jose = require('node-jose');
-//const env = 'node:process';
 
 const app = express();
 const port = 8080;
@@ -29,6 +28,7 @@ let expiredToken;
 
 app.use(express.json());
 
+// post request for auth, It is at the top to combat the 405 method not allowed error when using GET on /auth
 app.post('/auth', async (req, res) => {
   console.log("Auth endpoint hit");
   await storeAuthLog(req.ip, null);
@@ -66,6 +66,7 @@ app.post('/auth', async (req, res) => {
   res.send(signed);
 });
 
+//database setup with verbose logging for debugging
 const db = new Database('totally_not_my_privateKeys.db', { verbose: console.log });
 
 //Create Key Table
@@ -108,7 +109,7 @@ const insertAuthLog = db.prepare('INSERT INTO auth_logs(request_ip, user_id) VAL
 
 
 async function storeKeyInDB(key, exp) {
-  const pemKey = (key.toPEM(true)).toString();
+  const pemKey = (key).toString();
   insertKey.run(pemKey, exp);
 }
 
@@ -126,7 +127,7 @@ async function generateKeyPairs() {
   expiredKeyPair = await jose.JWK.createKey('RSA', 2048, { alg: 'RS256', use: 'sig' });
   
 }
-
+// Generate JWTs not expired
 function generateToken() {
   const payload = {
     user: 'sampleUser',
@@ -150,6 +151,7 @@ function generateToken() {
  
 }
 
+//generate JWTs expired
 function generateExpiredJWT() {
   const payload = {
     user: 'sampleUser',
@@ -165,12 +167,15 @@ function generateExpiredJWT() {
     }
   };
   
-  storeKeyInDB(expiredKeyPair, payload.exp);
-  const DBSign = db.prepare('SELECT * FROM keys WHERE key = ?').get(expiredKeyPair.toPEM(true));
-  expiredToken = jwt.sign(payload, DBSign.key, options);
+  const encryptedKey = encryptPrivateKey(expiredKeyPair);
+  storeKeyInDB(encryptedKey, payload.exp);
+  const DBSign = db.prepare('SELECT * FROM keys WHERE key = ?').get(encryptedKey);
+  const decryptedKey = decryptPrivateKey(DBSign.key);
+  expiredToken = jwt.sign(payload, decryptedKey, options);
   
 }
 
+// Encryption and Decryption functions using AES-256-GCM
 function encryptPrivateKey(key) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv(ALGORITHM, keyBuffer, iv);
