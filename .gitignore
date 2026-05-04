@@ -1,3 +1,4 @@
 node_modules/
 totally_not_my_privateKeys.db
-gradebot
+gradebot.exe
+.env

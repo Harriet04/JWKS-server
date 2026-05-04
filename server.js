@@ -9,8 +9,18 @@ const jose = require('node-jose');
 const app = express();
 const port = 8080;
 
-//const MASTER_KEY = Buffer.from(env.NOT_MY_KEY, 'hex'); 
-//const ALGORITHM = 'aes-256-gcm';
+//ensure the environment variable is set and valid
+const masterKey = process.env.NOT_MY_KEY;
+if (!masterKey) {
+    throw new Error('No key found in environment variable NOT_MY_KEY. Please set it to a 32-byte hex string.');
+}
+if (Buffer.from(masterKey, 'hex').length !== 32) {
+    throw new Error('NOT_MY_KEY must be a 32-byte hex string.');
+}
+// Convert the hex string to a Buffer for use in encryption/decryption
+const keyBuffer = Buffer.from(masterKey, 'hex');
+// set the encryption algorithm
+const ALGORITHM = 'aes-256-gcm';
 
 let keyPair;
 let expiredKeyPair;
@@ -56,7 +66,7 @@ app.post('/auth', async (req, res) => {
   res.send(signed);
 });
 
-const db = new Database('totally_not_my_privateKeys.db');
+const db = new Database('totally_not_my_privateKeys.db', { verbose: console.log });
 
 //Create Key Table
 db.exec(`
@@ -132,11 +142,11 @@ function generateToken() {
     }
   };
 
-  storeKeyInDB(keyPair, payload.exp);
-  //encryptPrivateKey(keyPair);
-  const DBSign = db.prepare('SELECT * FROM keys WHERE key = ?').get(keyPair.toPEM(true));
-  //decryptPrivateKey(DBSign.key);
-  token = jwt.sign(payload, DBSign.key, options);
+  const encryptedKey = encryptPrivateKey(keyPair);
+  storeKeyInDB(encryptedKey, payload.exp);
+  const DBSign = db.prepare('SELECT * FROM keys WHERE key = ?').get(encryptedKey);
+  const decryptedKey = decryptPrivateKey(DBSign.key);
+  token = jwt.sign(payload, decryptedKey, options);
  
 }
 
@@ -160,29 +170,27 @@ function generateExpiredJWT() {
   expiredToken = jwt.sign(payload, DBSign.key, options);
   
 }
-/*
+
 function encryptPrivateKey(key) {
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ALGORITHM, MASTER_KEY, iv);
+  const cipher = crypto.createCipheriv(ALGORITHM, keyBuffer, iv);
   let encrypted = cipher.update(key.toPEM(true), 'utf8', 'hex');
   encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return iv.toString('hex') + ':' + authTag + ':' + encrypted;
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
 }
 
 function decryptPrivateKey(encrypted) {
-  const [ivHex, authTagHex, encryptedHex] = encrypted.split(':');
+  const [ivHex, authTagHex, encryptedKey] = encrypted.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
-  const encryptedBuffer = Buffer.from(encryptedHex, 'hex');
-
-  const decipher = crypto.createDecipheriv(ALGORITHM, MASTER_KEY, iv);
+  const decipher = crypto.createDecipheriv(ALGORITHM, keyBuffer, iv);
   decipher.setAuthTag(authTag);
-  let decrypted = decipher.update(encryptedBuffer);
-  decrypted += decipher.final();
+  let decrypted = decipher.update(encryptedKey, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
   return decrypted;
 }
-*/
+
 
 app.post('/register', (req, res) => {
   const { username, email } = req.body;
@@ -236,6 +244,10 @@ app.get('/.well-known/jwks.json', (req, res) => {
   })});
 });
 
+process.on('exit', () => db.close());
+process.on('SIGHUP', () => process.exit(128 + 1));
+process.on('SIGINT', () => process.exit(128 + 2));
+process.on('SIGTERM', () => process.exit(128 + 15));
 
 app.listen(port, () => {
     console.log(`Server started on http://localhost:${port}`);
