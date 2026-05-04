@@ -1,3 +1,4 @@
-<img width="1168" height="614" alt="image" src="https://github.com/user-attachments/assets/b3b2cdaa-83b0-434a-ae63-0a0b17cab18a" />
+<img width="1063" height="683" alt="Screenshot 2026-05-03 232601" src="https://github.com/user-attachments/assets/0401013d-6658-4eb8-a64c-76667fb147b4" />
 
-Project 2 uses the demo base as provided by Jacob Hochsetler. As such it run through the "node server.js" comand.
+
+Project 3 uses the demo base as provided by Jacob Hochsetler. It also utilizes .env As such it run through the "node --env-file=.env server.js" comand.
